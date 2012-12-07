@@ -8,7 +8,10 @@ var http = require('http'),
 	im = require('imagemagick'),
 	nodemailer = require('nodemailer'),
 	countlyConfig = require('./config'),
-	countlyDb = mongo.db(countlyConfig.mongodb.host + ':' + countlyConfig.mongodb.port + '/' + countlyConfig.mongodb.db + '?auto_reconnect'),
+	countlyDb = mongo.db((countlyConfig.mongodb.user && countlyConfig.mongodb.password ?
+        countlyConfig.mongodb.user + ':' + countlyConfig.mongodb.password + '@'
+        : '')
+        + countlyConfig.mongodb.host + ':' + countlyConfig.mongodb.port + '/' + countlyConfig.mongodb.db + '?auto_reconnect'),
 	Db = require('mongodb').Db,
 	Server = require('mongodb').Server,
 	server_config = new Server(countlyConfig.mongodb.host, countlyConfig.mongodb.port, {auto_reconnect: true, native_parser: true}),
@@ -69,7 +72,7 @@ app.configure(function() {
 	app.use(express.cookieParser());
 	app.use(express.session({
 		secret: 'countlyss',
-		store: new mongoStore({db: sessionDb, collection: 'user_sessions'})
+		store: new mongoStore({db: sessionDb, collection: 'user_sessions', username: countlyConfig.mongodb.user, password: countlyConfig.mongodb.password})
 	}));
 	app.use(express.methodOverride());
 	app.use(express.csrf());

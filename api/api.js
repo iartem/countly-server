@@ -7,7 +7,10 @@ var http = require('http'),
 	mongo = require('mongoskin'),
 	countlyConfig = require('./config'), // Config file for the app
 	port = countlyConfig.api.port,
-	countlyDb = mongo.db(countlyConfig.mongodb.host + ':' + countlyConfig.mongodb.port + '/' + countlyConfig.mongodb.db + '?auto_reconnect');
+	countlyDb = mongo.db((countlyConfig.mongodb.user && countlyConfig.mongodb.password ?
+        countlyConfig.mongodb.user + ':' + countlyConfig.mongodb.password + '@'
+        : '')
+        + countlyConfig.mongodb.host + ':' + countlyConfig.mongodb.port + '/' + countlyConfig.mongodb.db + '?auto_reconnect');
 
 // Global date variables
 var now, timestamp, yearly, monthly, weekly, daily, hourly, appTimezone;
