@@ -10,7 +10,9 @@ var http = require('http'),
 	countlyDb = mongo.db((countlyConfig.mongodb.user && countlyConfig.mongodb.password ?
         countlyConfig.mongodb.user + ':' + countlyConfig.mongodb.password + '@'
         : '')
-        + countlyConfig.mongodb.host + ':' + countlyConfig.mongodb.port + '/' + countlyConfig.mongodb.db + '?auto_reconnect');
+        + countlyConfig.mongodb.host + ':' + countlyConfig.mongodb.port + '/' + countlyConfig.mongodb.db + '?auto_reconnect'),
+    apiConfig = countlyConfig.api,
+    storedEvents = apiConfig.events && apiConfig.events.log ? (apiConfig.events.whitelist || []) : undefined;
 
 // Global date variables
 var now, timestamp, yearly, monthly, weekly, daily, hourly, appTimezone;
@@ -42,6 +44,15 @@ var dbUserMap = {
 	'platform': 'p',
 	'platform_version': 'pv',
 	'app_version': 'av'
+};
+
+var dbEventLogMap = {
+	'key': 'k',
+	'timestamp': 't',
+	'user': 'u',
+	'count': 'c',
+	'sum': 's',
+	'segmentation': 'a'
 };
 
 function isNumber(n) {
@@ -508,7 +519,8 @@ function processEvents(getParams) {
 		eventSegments = {},
 		tmpEventObj = {},
 		shortCollectionName = "",
-		eventCollectionName = "";
+		eventCollectionName = "",
+		eventLogs = [];
 	
 	for (var i=0; i < getParams.events.length; i++) {
 		
@@ -524,7 +536,7 @@ function processEvents(getParams) {
 		// Mongodb collection names can not contain system. or $
 		shortCollectionName = currEvent.key.replace(/system\.|\$/g, "");
 		eventCollectionName = shortCollectionName + getParams.app_id;
-		
+
 		// Mongodb collection names can not be longer than 128 characters
 		if (eventCollectionName.length > 128) {
 			continue;
@@ -534,8 +546,23 @@ function processEvents(getParams) {
 		if (getParams.events[i].timestamp) {
 			initTimeVars(appTimezone, getParams.events[i].timestamp);
 		}
-		
-		arrayAddUniq(events, shortCollectionName);
+
+        if (storedEvents !== undefined && (storedEvents.length == 0 || storedEvents.indexOf(currEvent.key) !== -1)){
+            var loggedEvent = {
+                _id: currEvent.id || undefined
+            };
+
+            loggedEvent[dbEventLogMap.key] = currEvent.key;
+            loggedEvent[dbEventLogMap.timestamp] = Math.round(now.getTime() / 1000);
+            loggedEvent[dbEventLogMap.user] = getParams.app_user_id;
+            loggedEvent[dbEventLogMap.count] = currEvent.count;
+            loggedEvent[dbEventLogMap.sum] = currEvent.sum;
+            loggedEvent[dbEventLogMap.segmentation] = currEvent.segmentation;
+
+            eventLogs.push(loggedEvent);
+        }
+
+        arrayAddUniq(events, shortCollectionName);
 		
 		if (currEvent.sum && isNumber(currEvent.sum)) {
 			fillTimeObject(tmpEventObj, dbMap['sum'], currEvent.sum);
@@ -638,7 +665,9 @@ function processEvents(getParams) {
 			}
 		}
 	}
-	
+
+    if (eventLogs.length) countlyDb.collection('event_log' + getParams.app_id).insert(eventLogs, {keepGoing: true});
+
 	if (events.length) {
 		var eventSegmentList = {'$addToSet': {'list': {'$each': events}}};
 		
