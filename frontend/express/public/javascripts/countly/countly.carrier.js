@@ -16,7 +16,8 @@
 				url: countlyCommon.READ_API_URL,
 				data: {
 					"app_key" : countlyCommon.ACTIVE_APP_KEY,
-					"method" : "carriers"
+					"method" : "carriers",
+                    "dimensions": countlyCommon.serializeActiveDimensions()
 				},
 				dataType: "jsonp",
 				success: function(json) {
@@ -40,14 +41,19 @@
 				_activeAppKey = countlyCommon.ACTIVE_APP_KEY;
 				return countlyCarrier.initialize();
 			}
-		
+
+            if (!countlyCommon.canRefresh(_carrierDb)) {
+                return countlyCarrier.initialize();
+            }
+
 			return $.ajax({
 				type: "GET",
 				url: countlyCommon.READ_API_URL,
 				data: {
 					"app_key" : countlyCommon.ACTIVE_APP_KEY,
 					"method" : "carriers",
-					"action": "refresh"
+					"action": "refresh",
+                    "dimensions": countlyCommon.serializeActiveDimensions()
 				},
 				dataType: "jsonp",
 				success: function(json) {

@@ -23,11 +23,14 @@
 <body> 
 	<div id="sidebar">
 		<div id="new-install-overlay"></div>
-		<div id="sidebar-top">
+		<div id="sidebar-top" class="<%=userOfApps[0].dimensions ? 'has-dimensions' : ''%>">
 			<a href="#/"><div id="sidebar-logo"></div></a>
 			<div id="sidebar-app-select">
 				<div class="logo"<% if (userOfApps[0]){ %>style="background-image:url('/appimages/<%= userOfApps[0]._id %>.png')"<% } %>></div>
 				<div class="text"><% if (userOfApps[0]){ %><%= userOfApps[0].name %><% } %></div>
+			</div>
+			<div id="sidebar-dimensions-select">
+				<div class="text"></div>
 			</div>
 		</div>
 		<div id="sidebar-menu">
@@ -163,6 +166,13 @@
 				<div class="name"></div>
 				<div class="drag"></div>
 			</div>
+		</div>
+	</div>
+	<div id="dimensions-nav">
+		<div id="dimensions-nav-head">
+			<div id="dimensions-nav-title" style="max-width: 105px;" data-localize="dimensions.title"></div>
+		</div>
+		<div class="dimensions-scrollable">
 		</div>
 	</div>
 	<div></div>
@@ -999,8 +1009,31 @@
 		{{/if}}
 		</div>
 	</script>
-	
-	<script language="javascript" type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script id="template-dimensions" type="text/x-handlebars-template">
+        {{#eachOfArray dimensions}}
+        <div class="dimensions-container dimensions-navigate" data-key="{{value.key}}">
+            <div class="cly-select">
+                <div class="select-inner">
+                    <div class="text-container">
+                        <div class="text">{{activeDimensionTitle value}}</div>
+                    </div>
+                    <div class="right combo"></div>
+                </div>
+                <div class="select-items square">
+                    <div class="scrollable">
+                        <div data-value="" data-key="{{value.key}}" class="dimensions-option item" data-localize="dimensions.no-dimension" data-prepend="{{value.key}}: "></div>
+                        {{#eachOfArray value.values}}
+                        <div data-value="{{value}}" data-key="{{../value.key}}" class="dimensions-option item">{{value}}</div>
+                        {{/eachOfArray}}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{/eachOfArray}}
+    </script>
+
+
+    <script language="javascript" type="text/javascript" src="https://www.google.com/jsapi"></script>
 	<script language="javascript" type="text/javascript" src="/javascripts/jquery-1.8.2.min.js"></script>
 	<script language="javascript" type="text/javascript" src="/javascripts/underscore-min.js?v12.09"></script>
 	<script language="javascript" type="text/javascript" src="/javascripts/jquery.form.js"></script>

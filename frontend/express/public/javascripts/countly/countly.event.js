@@ -17,7 +17,8 @@
 					url: countlyCommon.READ_API_URL,
 					data: {
 						"app_key" : countlyCommon.ACTIVE_APP_KEY,
-						"method" : "get_events"
+						"method" : "get_events",
+                        "dimensions": countlyCommon.serializeActiveDimensions()
 					},
 					dataType: "jsonp",
 					success: function(json) {
@@ -33,7 +34,8 @@
 					data: {
 						"app_key" : countlyCommon.ACTIVE_APP_KEY,
 						"method" : "events",
-						"event": _activeEvent
+						"event": _activeEvent,
+                        "dimensions": countlyCommon.serializeActiveDimensions()
 					},
 					dataType: "jsonp",
 					success: function(json) {
@@ -65,14 +67,19 @@
 				_activeAppKey = countlyCommon.ACTIVE_APP_KEY;
 				return countlyEvent.initialize();
 			}
-		
+
+            if (!countlyCommon.canRefresh(_activeEvents)) {
+                return countlyEvent.initialize();
+            }
+
 			return $.when(
 				$.ajax({
 					type: "GET",
 					url: countlyCommon.READ_API_URL,
 					data: {
 						"app_key" : countlyCommon.ACTIVE_APP_KEY,
-						"method" : "get_events"
+						"method" : "get_events",
+                        "dimensions": countlyCommon.serializeActiveDimensions()
 					},
 					dataType: "jsonp",
 					success: function(json) {
@@ -89,7 +96,8 @@
 						"app_key" : countlyCommon.ACTIVE_APP_KEY,
 						"method" : "events",
 						"action" : "refresh",
-						"event": _activeEvent
+						"event": _activeEvent,
+                        "dimensions": countlyCommon.serializeActiveDimensions()
 					},
 					dataType: "jsonp",
 					success: function(json) {

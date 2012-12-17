@@ -16,7 +16,16 @@ var http = require('http'),
 	Server = require('mongodb').Server,
 	server_config = new Server(countlyConfig.mongodb.host, countlyConfig.mongodb.port, {auto_reconnect: true, native_parser: true}),
 	sessionDb = new Db(countlyConfig.mongodb.db, server_config, {});
-	
+
+// Prepare dimensions - pack multiple values with the same keys into one object
+function appDimensions(arr){
+    if (!arr) return undefined;
+    for (var i = 0; i < arr.length; i++){
+        arr[i].id = "" + arr[i].id;
+    }
+    return arr;
+}
+
 function sha1Hash(str, addSalt) {
 	var salt = (addSalt)? new Date().getTime() : "";
 	return crypto.createHmac('sha1', salt + "").update(str + "").digest('hex');
@@ -127,7 +136,8 @@ app.get('/dashboard', function(req, res, next) {
 								"key": apps[i]["key"],
 								"category": apps[i]["category"],
 								"timezone": apps[i]["timezone"],
-								"country": apps[i]["country"]
+								"country": apps[i]["country"],
+                                "dimensions": appDimensions(apps[i]["dimensions"])
 							};	
 						}
 						

@@ -8,6 +8,8 @@ a:active {color:inherit;}
 /* SIDEBAR */
 #sidebar {position:fixed; left:0; width:224px; background-image:url('/images/dashboard/menu_bg.png'); background-position:0px 400px; height:100%; z-index:10; user-select: none;}
 #sidebar-top {height:112px; padding-top:11px; background-image:url('/images/dashboard/logo_bg.png');}
+#sidebar-top.has-dimensions {height:170px;}
+#sidebar-top.has-dimensions #sidebar-dimensions-select {display: block;}
 #sidebar-logo {background-image:url('/images/dashboard/logo.png'); width:144px; height:44px; margin:0 auto;}
 #sidebar-app-select {width:170px; height:16px; padding:10px; background-image:url('/images/dashboard/combobox.png'); margin:0 auto; margin-top:21px; cursor:pointer;}
 	#sidebar-app-select:hover {background-position:-190px;}
@@ -17,7 +19,14 @@ a:active {color:inherit;}
 	#sidebar-app-select.disabled:hover {background-position:0;}
 	#sidebar-app-select .text { width:120px; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; font:13px 'Ubuntu'; color:#505050; text-shadow:0 1px #CCC; float:left; }
 	#sidebar-app-select .logo { width:20px; height:20px; float:left; margin-right:10px; margin-top:-3px; background-position:center; border-radius:4px; border:1px solid #555; }
-	
+#sidebar-dimensions-select {display: none; width:170px; height:16px; padding:10px; background-image:url('/images/dashboard/combobox.png'); margin:0 auto; margin-top:21px; cursor:pointer;}
+	#sidebar-dimensions-select:hover {background-position:-190px;}
+	#sidebar-dimensions-select.active {background-position:-380px;}
+	#sidebar-dimensions-select.active:hover {background-position:-570px;}
+	#sidebar-dimensions-select.disabled {opacity:0.3;}
+	#sidebar-dimensions-select.disabled:hover {background-position:0;}
+	#sidebar-dimensions-select .text { width:140px; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; font:13px 'Ubuntu'; color:#505050; text-shadow:0 1px #CCC; float:left; }
+
 #sidebar-bottom-container { z-index:2; position:absolute; background-color:#222222; bottom:14px; left:14px; padding:5px 10px; width:170px; font:13px 'Ubuntu'; color:#505050; box-shadow:inset 0 1px 0 #2D2D2D; text-shadow:0 -1px #161616; border:1px solid #1A1A1A; border-radius:5px;}
 #sidebar-bottom-container .reveal-menu {width:14px; height:15px; background-image:url('/images/dashboard/settings.png'); float:right; cursor:pointer;}
 #sidebar-bottom-container .reveal-language-menu {float:right; padding:5px 0 6px 5px; margin:-5px -4px -5px 5px; border-left:1px solid #1A1A1A; cursor:pointer; transition:color 1s;}
@@ -213,9 +222,22 @@ a:active {color:inherit;}
 	.app-container.app-navigate {position:relative;}
 	.app-container.app-navigate .name{width:109px;}
 	.app-container.app-navigate .drag {display:none; width:15px; height:13px; background-image:url('/images/dashboard/app-order.png'); cursor:move; position:absolute; top:17px; right:12px;}
-	
+
 #sort-app-button .icon {margin:0px; width:21px; height:18px; background-image:url('/images/dashboard/app-order-activate.png');}
 /* APP NAVIGATION END */
+
+/* DIMENSIONS START */
+#dimensions-nav-title {overflow: hidden; text-overflow:ellipsis; white-space:nowrap; max-width:85px; float: left; padding-top:3px;}
+#dimensions-nav {width:190px; display:none; background-color:#CCC; height:100%; position:fixed; left:31px; z-index:8; background-image:url('/images/dashboard/dropdown_bg.png');}
+#dimensions-nav-head {height:27px; padding:20px; padding-left:32px; color:#BFBFBF; text-shadow:0px -1px #232323; font:18px 'Ubuntu'; background-image:url('/images/dashboard/dropdown_head.png'); text-align:left;}
+#dimensions-nav-head .button-container { overflow:hidden; position:absolute; top:19px; right:10px; }
+.dimensions-container {height:30px; background-image:url('/images/dashboard/dropdown_item.png'); padding:8px 12px; padding-left:32px; overflow:visible;}
+.dimensions-container:last-child {margin-bottom:60px;}
+.dimensions-container .name {width: 146px; text-align:left; text-overflow:ellipsis; white-space:nowrap; overflow:visible; float:left; margin-left:10px; padding-top:6px; color:#464646; text-shadow:0px 1px #EAEAEA; font:13px 'Ubuntu';}
+.dimensions-container.dimensions-navigate {position:relative;}
+.dimensions-container.dimensions-navigate .name{width:109px;}
+.dimensions-container.dimensions-navigate .drag {display:none; width:15px; height:13px; background-image:url('/images/dashboard/app-order.png'); cursor:move; position:absolute; top:17px; right:12px;}
+/* DIMENSIONS END */
 
 #app-management-bar {width:190px; position:fixed; left:220px; top:0px; text-align:right; background-color:#CCC; height:100%; background-image:url('/images/dashboard/dropdown_bg.png');}
 #app-management-bar .app-container {padding-left:15px;}

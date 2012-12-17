@@ -16,7 +16,8 @@
 				url: countlyCommon.READ_API_URL,
 				data: {
 					"app_key" : countlyCommon.ACTIVE_APP_KEY,
-					"method" : "app_versions"
+					"method" : "app_versions",
+                    "dimensions": countlyCommon.serializeActiveDimensions()
 				},
 				dataType: "jsonp",
 				success: function(json) {
@@ -39,14 +40,19 @@
 				_activeAppKey = countlyCommon.ACTIVE_APP_KEY;
 				return countlyAppVersion.initialize();
 			}
-		
+
+            if (!countlyCommon.canRefresh(_appVersionsDb)) {
+                return countlyAppVersion.initialize();
+            }
+
 			return $.ajax({
 				type: "GET",
 				url: countlyCommon.READ_API_URL,
 				data: {
 					"app_key" : countlyCommon.ACTIVE_APP_KEY,
 					"method" : "app_versions",
-					"action": "refresh"
+					"action": "refresh",
+                    "dimensions": countlyCommon.serializeActiveDimensions()
 				},
 				dataType: "jsonp",
 				success: function(json) {

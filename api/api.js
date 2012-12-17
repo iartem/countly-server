@@ -6,13 +6,12 @@ var http = require('http'),
 	crypto = require('crypto'),
 	mongo = require('mongoskin'),
 	countlyConfig = require('./config'), // Config file for the app
-	port = countlyConfig.api.port,
-	countlyDb = mongo.db((countlyConfig.mongodb.user && countlyConfig.mongodb.password ?
-        countlyConfig.mongodb.user + ':' + countlyConfig.mongodb.password + '@'
-        : '')
-        + countlyConfig.mongodb.host + ':' + countlyConfig.mongodb.port + '/' + countlyConfig.mongodb.db + '?auto_reconnect'),
-    apiConfig = countlyConfig.api,
-    storedEvents = apiConfig.events && apiConfig.events.log ? (apiConfig.events.whitelist || []) : undefined;
+    _api = countlyConfig.api,
+    _mongo = countlyConfig.mongodb,
+	countlyDb = mongo.db((_mongo.user && _mongo.password ? _mongo.user + ':' + _mongo.password + '@' : '')
+        + _mongo.host + ':' + _mongo.port + '/' + _mongo.db + '?auto_reconnect'),
+    storedEvents = _api.events && _api.events.log ? (_api.events.whitelist || []) : undefined,
+    storedDimensions = _api.users && _api.users.dimensions ? (_api.users.dimensionsWhitelist || []) : undefined;
 
 // Global date variables
 var now, timestamp, yearly, monthly, weekly, daily, hourly, appTimezone;
@@ -43,7 +42,8 @@ var dbUserMap = {
 	'country_code': 'cc',
 	'platform': 'p',
 	'platform_version': 'pv',
-	'app_version': 'av'
+	'app_version': 'av',
+    "user_dimensions": 'dm'
 };
 
 var dbEventLogMap = {
@@ -52,11 +52,284 @@ var dbEventLogMap = {
 	'user': 'u',
 	'count': 'c',
 	'sum': 's',
-	'segmentation': 'a'
+	'segmentation': 's',
+	"user_dimensions": 'dm'
 };
 
 function isNumber(n) {
 	return !isNaN(parseFloat(n)) && isFinite(n);
+}
+
+// Check objects for equality
+// Probably worth switching to more complete and strict version
+function isEqual(a, b, excluding){
+    if (a == null || b == null) return a === b;
+
+    var size = 0;
+    for (var ap in a) {
+        if (excluding && excluding.indexOf(ap) !== -1) continue;
+        if (!b[ap] || a[ap] != b[ap]) return false;
+        size++;
+    }
+
+    for (var bp in b){
+        if (excluding && excluding.indexOf(bp) !== -1) continue;
+        size--;
+    }
+
+    return size == 0;
+}
+
+// Return only dimensions of a particular level (keys number)
+function filterDimensionsByLevel(arr, level){
+    var ret = [];
+    for (var i = 0; i < arr.length; i++){
+        var keysInDimension = 0;
+        for (var ak in arr[i]) if (ak != 'id') {
+            keysInDimension++;
+        }
+        if (level == keysInDimension) ret.push(arr[i]);
+    }
+    return ret;
+}
+
+// Find a dimension in array of dimensions
+function findDimension(arr, dimension, level, checkValue){
+    var array = level ? filterDimensionsByLevel(arr, level) : arr;
+
+    for (var i = 0; i < array.length; i++){
+        var keysEqual = 0, keysInDimension = 0;
+
+        for (var dk in dimension) if (dk != 'id') {
+            keysInDimension++;
+
+            var keysInArrayDimension = 0;
+            for (var ak in array[i]) if (ak != 'id') {
+                keysInArrayDimension++;
+
+                if (ak == dk && (!checkValue || (checkValue && array[i][ak] == dimension[dk]))) {
+                    keysEqual++;
+                }
+            }
+        }
+
+        if (keysInDimension == keysInArrayDimension && keysInDimension == keysEqual && (!level || level == keysInDimension)) return arr[i];
+    }
+
+    return null;
+//
+//    for (var i = 0; i < arr.length; i++) {
+//        var d = arr[i], keys = 0, found;
+//        for (var k in d){
+//            var keyIndex = keys.indexOf(key),
+//                value = keyIndex === -1 ? null : values[keyIndex];
+//            if (k == key && (!value || d[k] == value)) found = d;
+//            keys++;
+//        }
+//        if (found && keys == level) return found;
+//    }
+//    return null;
+}
+
+// Almost Cartesian product (also returns partial multiplications):
+// cartesian([a, b, c]) = [a; b; c; a,b; a,c; b,c; a,b,c]
+var cartesian = function(a){
+    var combined = combine(a);
+    for (var i = 0; i < combined.length; i++){
+        var replacement = {};
+        for (var c = 0; c < combined[i].length; c++) {
+            for (var k in combined[i][c]) replacement[k] = combined[i][c][k];
+        }
+        combined[i] = replacement;
+    }
+    return combined;
+}
+
+var combine = function(a) {
+    var fn = function(n, src, got, all) {
+        if (n == 0) {
+            if (got.length > 0) {
+                all[all.length] = got;
+            }
+            return;
+        }
+        for (var j = 0; j < src.length; j++) {
+            fn(n - 1, src.slice(j + 1), got.concat([src[j]]), all);
+        }
+    };
+    var all = [];
+    for (var i=0; i < a.length; i++) {
+        fn(i, a, [], all);
+    }
+    all.push(a);
+    return all;
+}
+//
+//function cartesian(dimensions) {
+//    var keys = [];
+//    for (var i = 0; i < dimensions.length; i++) {
+//        for (var key in dimensions[i]) if (key != 'id' && keys.indexOf(key) === -1) keys.push(key);
+//    }
+//
+//    var combos = [];
+//    for (var i = 1; i <= dimensions.length; i++) combinations(keys, i, function(arr){ combos.push(arr)});
+//
+//    var dimensionCombos = [];
+//    for (var i = 0; i < combos.length; i++){
+//        var obj = {};
+//        for (var j = 0; j < combos[i].length; j++){
+//            obj[combos[i][j]] = findDimension(dimensions, [combos[i][j] => 'some-value']);
+//        }
+//    }
+//
+//
+//    var reduce = [];
+//    for (var k in keys) reduce.push([k]);
+//    var reduce = Array.prototype.reduce.call(reduce, function(a, b) {
+//        var ret = [];
+//        a.forEach(function(a) {
+//            b.forEach(function(b) {
+//                ret.push(a.concat([b]));
+//            });
+//        });
+//        return ret;
+//    }, [[]]);
+//
+//
+//    var combination = function(){
+//
+//    };
+//
+//    var ret = [];
+//    for (var i = 0; i < keys.length; i++) {
+//        for (var j = 0; i < keys.length; i++) {
+//
+//        }
+//
+//    }
+//
+//
+//    for (var i = 0; i )
+//}
+
+// Update _id_ record of _collection_ along with all dimensions from getParams.app_user_dimensions with _update_
+function updateAppIdWithDimensions(getParams, collection, id, update, options){
+    var query = {_id: id};
+    if (getParams.app_user_dimensions && getParams.app_user_dimensions.length) {
+        query = {'$or': [{_id: id}]};
+        for (var i = 0; i < getParams.app_user_dimensions.length; i++){
+            query['$or'].push({_id: getParams.app_user_dimensions[i].id});
+        }
+
+        // We cannot upsert these because of $or query, we also do not like N+1.
+        // Instead we switch to async checking of number of updated records and running the query again
+        // if some record hasn't been processed. Far from ideal (not completely error-prone), but the only solution
+        // when user have, say, 3 dimensions (7 cartesian dimensions x 5-10 updates per request = mongo chokes pretty fast).
+        if (options.upsert){
+            countlyDb.collection(collection).update(query, update, {multi: true, safe: true}, function(err, count, records){
+                if (count != (getParams.app_user_dimensions.length + 1)){
+                    if (count == 0) countlyDb.collection(collection).update({_id: id}, update, {upsert: true});
+                    for (var i = 0; i < getParams.app_user_dimensions.length; i++){
+                        countlyDb.collection(collection).update({_id: getParams.app_user_dimensions[i].id}, update, {upsert: true});
+                    }
+                }
+            });
+        } else {
+            countlyDb.collection(collection).update(query, update, {multi: true});
+        }
+
+    } else {
+        countlyDb.collection(collection).update(query, update, options);
+    }
+}
+
+// Update event collections
+function updateEventsWithDimensions(getParams, collection, segment, update, options){
+    console.log('updateEventsWithDimensions for ' + segment + ' of ' + getParams.app_id);
+    if (getParams.app_user_dimensions && getParams.app_user_dimensions.length) {
+        console.log('has ' + getParams.app_user_dimensions.length + ' segments');
+        countlyDb.collection(collection).update({'_id': segment}, update, options);
+        for (var i = 0; i < getParams.app_user_dimensions.length; i++){
+            var collectionName = collection.replace(getParams.app_id, getParams.app_user_dimensions[i].id);
+            console.log('processing ' + collectionName + ' for dimension ' + getParams.app_user_dimensions[i].id);
+            countlyDb.collection(collectionName).update({'_id': segment}, update, options);
+        }
+    } else {
+        countlyDb.collection(collection).update({'_id': segment}, update, options);
+    }
+}
+
+// Process user dimensions
+// - add nonexistent dimensions to apps collection
+// - find existing dimensions (key = value) ids and store in getParams for future use
+// - construct cartesian product of user dimensions
+// - update app_users with new dimensions if new added or existing changed
+function findOrUpdateAppUserDimensions(getParams, app, user){
+    if (storedDimensions === undefined) return;
+
+    if (getParams.dimensions){
+        // Convert to array of simple one-key dimensions
+        var dimensions = [];
+        for (var key in getParams.dimensions) {
+            var dimension = {};
+            dimension[key] = getParams.dimensions[key];
+            dimensions.push(dimension);
+        }
+
+        // Find other one-key dimensions assigned to the user before
+        var userDimensions = user ? user[dbUserMap.user_dimensions] || [] : [],
+            filtered = filterDimensionsByLevel(userDimensions, 1),
+            userNeedsUpdate = user ? false : true;
+        for (var i = 0; i < filtered.length; i++){
+            var existing = findDimension(dimensions, filtered[i], 1);
+            if (!existing) {
+                dimensions.push(filtered[i]);
+            } else {
+                var equal = false;
+                for (var key in existing) if (key != 'id') {
+                    // only one key in this loop
+                    if (existing[key] != filtered[key]) {
+                        userNeedsUpdate = true;
+                    }
+                }
+            }
+        }
+
+        // Construct cartesian product
+        if (_api.users.cartesian) dimensions = cartesian(dimensions);
+
+        // If dimension already exists, we need to find its id
+        // If not, we need to add it
+        if (!app.dimensions) app.dimensions = [];
+        var count = 0, newAppDimensions = [];
+        for (var i = 0; i < dimensions.length; i++){
+            var existing = findDimension(app.dimensions, dimensions[i], 0, true);
+            if (existing){
+                dimensions[i].id = existing.id;
+            } else {
+                dimensions[i].id = new mongo.ObjectID();
+                newAppDimensions.push(dimensions[i]);
+            }
+        }
+
+        // Update app if needed
+        if (newAppDimensions.length) {
+            countlyDb.collection('apps').update({'_id': app['_id']}, {'$pushAll': {dimensions: newAppDimensions}});
+        }
+
+        // Update user if needed
+        if (userDimensions.length < dimensions.length) userNeedsUpdate = true;
+        if (userNeedsUpdate) {
+            countlyDb.collection('app_users' + getParams.app_id).update({'_id': getParams.app_user_id}, {'$set': {'dm': dimensions}}, {upsert: true});
+        }
+
+        // Save dimensions for future updates
+        getParams.app_user_dimensions = dimensions;
+
+    } else if (user && user[dbUserMap.user_dimensions]) {
+        // Save dimensions for future updates
+        getParams.app_user_dimensions = user[dbUserMap.user_dimensions];
+    }
 }
 
 // Initialization of the global time variables yearly, monthly, daily etc.
@@ -97,18 +370,25 @@ function validateAppForWriteAPI(getParams) {
 		appTimezone = app['timezone']; // Global var appTimezone
 		
 		initTimeVars(appTimezone, getParams.timestamp);
-		
-		var updateSessions = {};
-		fillTimeObject(updateSessions, dbMap['events']);
-		countlyDb.collection('sessions').update({'_id': getParams.app_id}, {'$inc': updateSessions}, {'upsert': true});
-		
-		if (getParams.events) {
-			processEvents(getParams);
-		} else if (getParams.session_duration) {
-			processSessionDuration(getParams);
-		} else {
-			checkUserLocation(getParams);
-		}
+
+        countlyDb.collection('app_users' + getParams.app_id).findOne({'_id': getParams.app_user_id }, function(err, dbAppUser){
+
+            findOrUpdateAppUserDimensions(getParams, app, dbAppUser);
+
+            if (getParams.events) {
+                var updateSessions = {};
+                fillTimeObject(updateSessions, dbMap['events']);
+                updateAppIdWithDimensions(getParams, 'sessions', getParams.app_id, {'$inc': updateSessions}, {upsert: true});
+
+                processEvents(getParams);
+            } else if (getParams.session_duration) {
+                processSessionDuration(getParams);
+            } else {
+                checkUserLocation(getParams, dbAppUser);
+            }
+
+        });
+
 	});
 }
 
@@ -120,7 +400,21 @@ function validateAppForReadAPI(getParams, callback, collection, res) {
 		}
 		
 		getParams.app_id = app['_id'];
+		getParams.dimension_id = app['_id'];
 		appTimezone = app['timezone']; // Global var appTimezone
+
+        // Change app_id to dimension id if it's correct dimension
+        if (getParams.dimensions && app.dimensions) {
+            var dim = getParams.dimensions.split('|');
+            if (dim.length == 1) {
+                app.dimensions.forEach(function(d){
+                    try {
+                        if (("" + d.id) == dim[0]) getParams.dimension_id = new mongo.ObjectID(dim[0]);
+                    } catch (Error){ // ignore
+                    }
+                });
+            }
+        }
 		
 		initTimeVars(appTimezone, getParams.timestamp);
 		callback(getParams, collection, res);
@@ -152,7 +446,7 @@ function fillTimeObject(object, property, increment) {
 }
 
 // Performs geoip lookup for the IP address of the app user
-function checkUserLocation(getParams) {
+function checkUserLocation(getParams, dbAppUser) {
 	// Location of the user is retrieved using geoip-lite module from her IP address.
 	var locationData = geoip.lookup(getParams.ip_address);
 
@@ -174,30 +468,25 @@ function checkUserLocation(getParams) {
 		}
 	}
 	
-	processUserLocation(getParams);
+	processUserLocation(getParams, dbAppUser);
 }
 
-function processUserLocation(getParams) {	
+function processUserLocation(getParams, dbAppUser) {
 	// If begin_session exists in the API request
 	if (getParams.is_begin_session) {
 		// Before processing the session of the user we check if she exists in app_users collection.
-		countlyDb.collection('app_users' + getParams.app_id).findOne({'_id': getParams.app_user_id }, function(err, dbAppUser){
-			processUserSession(dbAppUser, getParams);
-		});
+        processUserSession(dbAppUser, getParams);
 	} else if (getParams.is_end_session) { // If end_session exists in the API request
 		if (getParams.session_duration) {
 			processSessionDuration(getParams);
 		}
-		countlyDb.collection('app_users' + getParams.app_id).findOne({'_id': getParams.app_user_id }, function(err, dbAppUser){
-			// If the user does not exist in the app_users collection or she does not have any 
-			// previous session duration stored than we dont need to calculate the session 
-			// duration range for this user.
-			if (!dbAppUser || !dbAppUser[dbUserMap['session_duration']]) {
-				return false;
-			}
-			
-			processSessionDurationRange(getParams, dbAppUser[dbUserMap['session_duration']]);
-		});
+
+        // If the user does not exist in the app_users collection or it does not have any
+        // previous session duration stored than we don't need to calculate the session
+        // duration range for this user.
+        if (dbAppUser && dbAppUser[dbUserMap['session_duration']]) {
+            processSessionDurationRange(getParams, dbAppUser[dbUserMap['session_duration']]);
+        }
 	} else {
 	
 		// If the API request is not for begin_session or end_session it has to be for 
@@ -247,8 +536,8 @@ function processSessionDurationRange(getParams, totalSessionDuration) {
 		}
 		
 		fillTimeObject(updateSessions, dbMap['durations'] + '.' + calculatedDurationRange);
-		countlyDb.collection('sessions').update({'_id': getParams.app_id}, {'$inc': updateSessions, '$addToSet': {'meta.d-ranges': calculatedDurationRange}}, {'upsert': false});
-		
+        updateAppIdWithDimensions(getParams, 'sessions', getParams.app_id, {'$inc': updateSessions, '$addToSet': {'meta.d-ranges': calculatedDurationRange}}, {upsert: false});
+
 		// sd: session duration. dbUserMap is not used here for readability purposes.
 		countlyDb.collection('app_users' + getParams.app_id).update({'_id': getParams.app_user_id}, {'$set': {'sd': 0}}, {'upsert': true});
 }
@@ -259,9 +548,9 @@ function processSessionDuration(getParams) {
 	
 	if (session_duration == (session_duration | 0)) {
 		fillTimeObject(updateSessions, dbMap['duration'], session_duration);
-	
-		countlyDb.collection('sessions').update({'_id': getParams.app_id}, {'$inc': updateSessions}, {'upsert': false});
-		
+
+        updateAppIdWithDimensions(getParams, 'sessions', getParams.app_id, {'$inc': updateSessions}, {upsert: true});
+
 		// sd: session duration, tsd: total session duration. dbUserMap is not used here for readability purposes.
 		countlyDb.collection('app_users' + getParams.app_id).update({'_id': getParams.app_user_id}, {'$inc': {'sd': session_duration, 'tsd': session_duration}}, {'upsert': true});
 	}
@@ -373,7 +662,7 @@ function processUserSession(dbAppUser, getParams) {
 		if (uniqueLevels.length != 0) {
 			userRanges['meta.' + 'f-ranges'] = calculatedFrequency;
 			userRanges['meta.' + 'l-ranges'] = calculatedLoyaltyRange;
-			countlyDb.collection('users').update({'_id': getParams.app_id}, {'$inc': updateUsers, '$addToSet': userRanges}, {'upsert': true});
+            updateAppIdWithDimensions(getParams, 'users', getParams.app_id, {'$inc': updateUsers, '$addToSet': userRanges}, {'upsert': true});
 		}
 		
 	} else {
@@ -396,15 +685,15 @@ function processUserSession(dbAppUser, getParams) {
 		
 		fillTimeObject(updateUsers, dbMap['loyalty'] + '.' + calculatedLoyaltyRange);
 		userRanges['meta.' + 'l-ranges'] = calculatedLoyaltyRange;
-		
-		countlyDb.collection('users').update({'_id': getParams.app_id}, {'$inc': updateUsers, '$addToSet': userRanges}, {'upsert': true});
+
+        updateAppIdWithDimensions(getParams, 'users', getParams.app_id, {'$inc': updateUsers, '$addToSet': userRanges}, {'upsert': true});
 	}
-	
-	countlyDb.collection('sessions').update({'_id': getParams.app_id}, {'$inc': updateSessions}, {'upsert': true});
-	countlyDb.collection('locations').update({'_id': getParams.app_id}, {'$inc': updateLocations, '$addToSet': {'meta.countries': getParams.user.country}}, {'upsert': true});
-	
+
+    updateAppIdWithDimensions(getParams, 'sessions', getParams.app_id, {'$inc': updateSessions}, {'upsert': true});
+    updateAppIdWithDimensions(getParams, 'locations', getParams.app_id, {'$inc': updateLocations, '$addToSet': {'meta.countries': getParams.user.country}}, {'upsert': true});
+
 	if (getParams.app_cc == getParams.user.country) {
-		countlyDb.collection('cities').update({'_id': getParams.app_id}, {'$inc': updateCities, '$set': {'country': getParams.user.country}, '$addToSet': {'meta.cities': getParams.user.city}}, {'upsert': true});
+        updateAppIdWithDimensions(getParams, 'cities', getParams.app_id, {'$inc': updateCities, '$set': {'country': getParams.user.country}, '$addToSet': {'meta.cities': getParams.user.city}}, {'upsert': true});
 	}
 	
 	processPredefinedMetrics(getParams, isNewUser, uniqueLevels);
@@ -463,7 +752,7 @@ function processPredefinedMetrics(getParams, isNewUser, uniqueLevels) {
 		}
 		
 		if (needsUpdate) {
-			countlyDb.collection(predefinedMetrics[i].db).update({'_id': getParams.app_id}, {'$inc': tmpTimeObj, '$addToSet': tmpSet}, {'upsert': true});
+            updateAppIdWithDimensions(getParams, predefinedMetrics[i].db, getParams.app_id, {'$inc': tmpTimeObj, '$addToSet': tmpSet}, {'upsert': true});
 		}
 	}
 	
@@ -477,7 +766,7 @@ function mergeEvents(obj1, obj2) {
 			obj1[level1] = obj2[level1];
 			continue;
 		}
-		
+
 		for (var level2 in obj2[level1]) {
 			if (obj1[level1][level2]) {
 				obj1[level1][level2] += obj2[level1][level2];
@@ -558,6 +847,9 @@ function processEvents(getParams) {
             loggedEvent[dbEventLogMap.count] = currEvent.count;
             loggedEvent[dbEventLogMap.sum] = currEvent.sum;
             loggedEvent[dbEventLogMap.segmentation] = currEvent.segmentation;
+
+            // TODO: think about loggedEvent[dbEventLogMap.user_dimensions]
+            if (getParams.app_user_dimensions) loggedEvent[dbEventLogMap.user_dimensions] = getParams.app_user_dimensions;
 
             eventLogs.push(loggedEvent);
         }
@@ -656,12 +948,12 @@ function processEvents(getParams) {
 		for (var segment in eventCollections[collection]) {
 			if (segment == "no-segment") {
 				if (eventSegments[collection]) {
-					countlyDb.collection(collection).update({'_id': segment}, {'$inc': eventCollections[collection][segment], '$addToSet': eventSegments[collection]}, {'upsert': true});
+                    updateEventsWithDimensions(getParams, collection, segment, {'$inc': eventCollections[collection][segment], '$addToSet': eventSegments[collection]}, {'upsert': true});
 				} else {
-					countlyDb.collection(collection).update({'_id': segment}, {'$inc': eventCollections[collection][segment]}, {'upsert': true});
+                    updateEventsWithDimensions(getParams, collection, segment, {'$inc': eventCollections[collection][segment]}, {'upsert': true});
 				}
 			} else {
-				countlyDb.collection(collection).update({'_id': segment}, {'$inc': eventCollections[collection][segment]}, {'upsert': true});
+                updateEventsWithDimensions(getParams, collection, segment, {'$inc': eventCollections[collection][segment]}, {'upsert': true});
 			}
 		}
 	}
@@ -687,10 +979,10 @@ function processEvents(getParams) {
 
 var preFetchEventData = function(getParams, collection, res) {
 	if (!getParams.event) {
-		countlyDb.collection('events').findOne({'_id' : getParams.app_id}, function(err, result){
+		countlyDb.collection('events').findOne({'_id' : getParams.dimension_id}, function(err, result){
 			if (result && result.list) {
 				collection = result.list[0];
-				fetchEventData(getParams, collection + getParams.app_id, res);
+				fetchEventData(getParams, collection + getParams.dimension_id, res);
 			} else {			
 				if (getParams.callback) {
 					result = getParams.callback + "({})";
@@ -704,7 +996,7 @@ var preFetchEventData = function(getParams, collection, res) {
 			}
 		});
 	} else {
-		fetchEventData(getParams, getParams.event + getParams.app_id, res);
+		fetchEventData(getParams, getParams.event + getParams.dimension_id, res);
 	}
 }
 
@@ -740,6 +1032,9 @@ var fetchCollection = function(getParams, collection, res) {
 		if (!result) {
 			result = {};
 		}
+
+        // Need to override ID to handle dimension changes on client
+        result._id = getParams.dimension_id;
 		
 		if (getParams.callback) {
 			result = getParams.callback + "(" + JSON.stringify(result) + ")";
@@ -757,12 +1052,12 @@ var fetchTimeData = function(getParams, collection, res) {
 
 	var fetchFields = {};
 
-	if (getParams.action == "refresh") {		
+	if (getParams.action == "refresh") {
 		fetchFields[daily] = 1;
 		fetchFields['meta'] = 1;
 	}
 
-	countlyDb.collection(collection).findOne({'_id' : getParams.app_id}, fetchFields, function(err, result){
+	countlyDb.collection(collection).findOne({'_id' : getParams.dimension_id}, fetchFields, function(err, result){
 		if (!result) {
 			now = new time.Date();
 			result = {};
@@ -797,6 +1092,7 @@ http.Server(function(req, res) {
 					'device_id': queryString.device_id,
 					'metrics': queryString.metrics,
 					'events': queryString.events,
+					'dimensions': queryString.dimensions,
 					'session_duration': queryString.session_duration,
 					'session_duration_total': queryString.session_duration_total,
 					'is_begin_session': queryString.begin_session,
@@ -814,7 +1110,8 @@ http.Server(function(req, res) {
 				return false;
 			} else {
 				// Set app_user_id that is unique for each user of an application.
-				getParams.app_user_id = crypto.createHash('sha1').update(getParams.app_key + getParams.device_id + "").digest('hex');
+                if (_api.dropDeviceIdBackwardsCompatibility) getParams.app_user_id = getParams.device_id;
+                else getParams.app_user_id = crypto.createHash('sha1').update(getParams.app_key + getParams.device_id + "").digest('hex');
 			}
 			
 			if (getParams.metrics) {
@@ -829,15 +1126,38 @@ http.Server(function(req, res) {
 						getParams.metrics["_os_version"] = getParams.metrics["_os"][0].toLowerCase() + getParams.metrics["_os_version"];
 					}
 					
-				} catch (SyntaxError) { console.log('Parse metrics JSON failed'); }
+				} catch (SyntaxError) {
+                    delete getParams.metrics;
+                    console.log('Metrics JSON parsing failed');
+                }
 			}
 			
 			if (getParams.events) {
 				try {
 					getParams.events = JSON.parse(getParams.events);
-				} catch (SyntaxError) { console.log('Parse events JSON failed'); }
+				} catch (SyntaxError) {
+                    delete getParams.events;
+                    console.log('Events JSON parsing failed');
+                }
 			}
-			
+
+			if (storedDimensions !== undefined && getParams.dimensions) {
+				try {
+                    var parsed = JSON.parse(getParams.dimensions);
+                    getParams.dimensions = {};
+                    for (var p in parsed){
+                        if (storedDimensions.length == 0 || storedDimensions.indexOf(p) !== -1) {
+                            // Mongodb field names can't start with $ or contain .
+                            var key = (p + "").replace(/^\$/, "").replace(/\./g, ":");
+                            getParams.dimensions[key] = parsed[p] + "";
+                        }
+                    }
+				} catch (SyntaxError) {
+                    delete getParams.dimensions;
+                    console.log('User dimensions JSON parsing failed');
+                }
+            }
+
 			validateAppForWriteAPI(getParams);
 			
 			res.writeHead(200);
@@ -851,7 +1171,8 @@ http.Server(function(req, res) {
 					'method': queryString.method,
 					'event': queryString.event,
 					'callback': queryString.callback,
-					'action': queryString.action
+					'action': queryString.action,
+                    'dimensions': queryString.dimensions
 				};
 				
 			if (!getParams.app_key) {
@@ -889,4 +1210,4 @@ http.Server(function(req, res) {
 			res.end();
 			break;
 	}
-}).listen(port);
+}).listen(_api.port);
