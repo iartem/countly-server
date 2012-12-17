@@ -899,7 +899,7 @@ function processEvents(getParams) {
 		}
 	}
 
-    if (eventLogs.length) countlyDb.collection('event_log' + getParams.app_id).insert(eventLogs, {keepGoing: true});
+    if (eventLogs.length) countlyDb.collection('event__log' + getParams.app_id).insert(eventLogs, {keepGoing: true});
 
 	if (events.length) {
 		var eventSegmentList = {'$addToSet': {'list': {'$each': events}}};
