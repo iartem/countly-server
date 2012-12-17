@@ -117,18 +117,6 @@ function findDimension(arr, dimension, level, checkValue){
     }
 
     return null;
-//
-//    for (var i = 0; i < arr.length; i++) {
-//        var d = arr[i], keys = 0, found;
-//        for (var k in d){
-//            var keyIndex = keys.indexOf(key),
-//                value = keyIndex === -1 ? null : values[keyIndex];
-//            if (k == key && (!value || d[k] == value)) found = d;
-//            keys++;
-//        }
-//        if (found && keys == level) return found;
-//    }
-//    return null;
 }
 
 // Almost Cartesian product (also returns partial multiplications):
@@ -164,53 +152,6 @@ var combine = function(a) {
     all.push(a);
     return all;
 }
-//
-//function cartesian(dimensions) {
-//    var keys = [];
-//    for (var i = 0; i < dimensions.length; i++) {
-//        for (var key in dimensions[i]) if (key != 'id' && keys.indexOf(key) === -1) keys.push(key);
-//    }
-//
-//    var combos = [];
-//    for (var i = 1; i <= dimensions.length; i++) combinations(keys, i, function(arr){ combos.push(arr)});
-//
-//    var dimensionCombos = [];
-//    for (var i = 0; i < combos.length; i++){
-//        var obj = {};
-//        for (var j = 0; j < combos[i].length; j++){
-//            obj[combos[i][j]] = findDimension(dimensions, [combos[i][j] => 'some-value']);
-//        }
-//    }
-//
-//
-//    var reduce = [];
-//    for (var k in keys) reduce.push([k]);
-//    var reduce = Array.prototype.reduce.call(reduce, function(a, b) {
-//        var ret = [];
-//        a.forEach(function(a) {
-//            b.forEach(function(b) {
-//                ret.push(a.concat([b]));
-//            });
-//        });
-//        return ret;
-//    }, [[]]);
-//
-//
-//    var combination = function(){
-//
-//    };
-//
-//    var ret = [];
-//    for (var i = 0; i < keys.length; i++) {
-//        for (var j = 0; i < keys.length; i++) {
-//
-//        }
-//
-//    }
-//
-//
-//    for (var i = 0; i )
-//}
 
 // Update _id_ record of _collection_ along with all dimensions from getParams.app_user_dimensions with _update_
 function updateAppIdWithDimensions(getParams, collection, id, update, options){
