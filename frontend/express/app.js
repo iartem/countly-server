@@ -567,28 +567,41 @@ app.post('/apps/reset', function(req, res, next) {
 		res.end();
 		return false;
 	}
-	
-	countlyDb.collection('sessions').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
-	countlyDb.collection('users').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
-	countlyDb.collection('carriers').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
-	countlyDb.collection('locations').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
-	countlyDb.collection('cities').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
-	countlyDb.collection('app_users' + req.body.app_id).drop();
-	countlyDb.collection('devices').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
-	countlyDb.collection('device_details').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
-	countlyDb.collection('app_versions').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
 
-	countlyDb.collection('events').findOne({"_id": countlyDb.ObjectID(req.body.app_id)}, function(err, events) {
-		if (!err && events && events.list) {
-			for (var i = 0; i < events.list.length; i++) {
-				countlyDb.collection(events.list[i] + req.body.app_id).drop();
-			}
-			
-			countlyDb.collection('events').remove({"_id": countlyDb.ObjectID(req.body.app_id)});
-		}
-	});
-	
-	res.send(true);
+    countlyDb.collection('apps').findOne({'_id': countlyDb.ObjectID(req.body.app_id)}, function(err, app){
+        if (!app) {
+            return false;
+        }
+
+        var ids = [app['_id']];
+        if (app.dimensions && app.dimensions.length) for (var i = 0; i < app.dimensions.length; i++){
+            ids.push(app.dimensions[i].id);
+        }
+
+        countlyDb.collection('sessions').remove({"_id": {$in: ids}});
+        countlyDb.collection('users').remove({"_id": {$in: ids}});
+        countlyDb.collection('carriers').remove({"_id": {$in: ids}});
+        countlyDb.collection('locations').remove({"_id": {$in: ids}});
+        countlyDb.collection('cities').remove({"_id": {$in: ids}});
+        countlyDb.collection('app_users' + req.body.app_id).drop();
+        countlyDb.collection('devices').remove({"_id": {$in: ids}});
+        countlyDb.collection('device_details').remove({"_id": {$in: ids}});
+        countlyDb.collection('app_versions').remove({"_id": {$in: ids}});
+
+        countlyDb.collection('events').findOne({"_id": app['_id']}, function(err, events) {
+            if (!err && events && events.list) {
+                for (var i = 0; i < events.list.length; i++) {
+                    countlyDb.collection(events.list[i] + req.body.app_id).drop();
+                }
+
+                countlyDb.collection('events').remove({"_id": app['_id']});
+            }
+        });
+
+        countlyDb.collection('apps').update({_id: app['_id']}, {$unset: {dimensions: 1}});
+    });
+
+    res.send(true);
 });
 
 app.post('/apps/icon', function(req, res) {
