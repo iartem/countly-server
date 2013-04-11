@@ -142,6 +142,10 @@
             }
         }
 
+        values.forEach(function(v){
+            v.values.sort();
+        });
+
         return values.sort(function(a, b){
             return a.key > b.key ? 1 : -1;
         });
