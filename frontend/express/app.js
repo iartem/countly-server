@@ -592,6 +592,9 @@ app.post('/apps/reset', function(req, res, next) {
             if (!err && events && events.list) {
                 for (var i = 0; i < events.list.length; i++) {
                     countlyDb.collection(events.list[i] + req.body.app_id).drop();
+                    if (app.dimensions && app.dimensions.length) for (var j = 0; j < app.dimensions.length; j++){
+                        countlyDb.collection(events.list[i] + app.dimensions[j].id).drop();
+                    }
                 }
 
                 countlyDb.collection('events').remove({"_id": app['_id']});
