@@ -164,15 +164,17 @@ function updateAppIdWithDimensions(getParams, collection, id, update, options){
 
         // We cannot upsert these because of $or query, we also do not like N+1.
         // Instead we switch to async checking of number of updated records and running the query again
-        // if some record hasn't been processed. Far from ideal (not completely error-prone), but the only solution
+        // if some record hasn't been processed. Far from ideal, but the only solution
         // when user have, say, 3 dimensions (7 cartesian dimensions x 5-10 updates per request = mongo chokes pretty fast).
         if (options.upsert){
-            countlyDb.collection(collection).update(query, update, {multi: true, safe: true}, function(err, count, records){
+            countlyDb.collection(collection).update(query, update, {multi: true, safe: true}, function(err, count){
                 if (count != (getParams.app_user_dimensions.length + 1)){
                     if (count == 0) countlyDb.collection(collection).update({_id: id}, update, {upsert: true});
-                    for (var i = 0; i < getParams.app_user_dimensions.length; i++){
-                        countlyDb.collection(collection).update({_id: getParams.app_user_dimensions[i].id}, update, {upsert: true});
-                    }
+                    getParams.app_user_dimensions.forEach(function(d){
+                        countlyDb.collection(collection).findOne(d.id, function(err, record){
+                            if (!record) countlyDb.collection(collection).update({_id: d.id}, update, {upsert: true});
+                        });
+                    });
                 }
             });
         } else {
@@ -186,13 +188,10 @@ function updateAppIdWithDimensions(getParams, collection, id, update, options){
 
 // Update event collections
 function updateEventsWithDimensions(getParams, collection, segment, update, options){
-    console.log('updateEventsWithDimensions for ' + segment + ' of ' + getParams.app_id);
     if (getParams.app_user_dimensions && getParams.app_user_dimensions.length) {
-        console.log('has ' + getParams.app_user_dimensions.length + ' segments');
         countlyDb.collection(collection).update({'_id': segment}, update, options);
         for (var i = 0; i < getParams.app_user_dimensions.length; i++){
             var collectionName = collection.replace(getParams.app_id, getParams.app_user_dimensions[i].id);
-            console.log('processing ' + collectionName + ' for dimension ' + getParams.app_user_dimensions[i].id);
             countlyDb.collection(collectionName).update({'_id': segment}, update, options);
         }
     } else {
