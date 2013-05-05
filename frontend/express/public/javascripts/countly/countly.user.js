@@ -40,8 +40,12 @@
 				_activeAppKey = countlyCommon.ACTIVE_APP_KEY;
 				return countlyUser.initialize();
 			}
-		
-			return $.ajax({
+
+            if (!countlyCommon.canRefresh(_userDb)) {
+                return countlyCarrier.initialize();
+            }
+
+            return $.ajax({
 				type: "GET",
 				url: countlyCommon.READ_API_URL,
 				data: {
