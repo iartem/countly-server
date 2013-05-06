@@ -1,17 +1,31 @@
 var http = require('http'),
+    path = require('path'),
+    fs = require('fs'),
 	url = require('url'),
+	querystring = require('querystring'),
 	geoip = require('geoip-lite'),
 	moment = require('moment'),
 	time = require('time'),
 	crypto = require('crypto'),
 	mongo = require('mongoskin'),
+	iap = require('iap_verifier'),
 	countlyConfig = require('./config'), // Config file for the app
     _api = countlyConfig.api,
     _mongo = countlyConfig.mongodb,
+    _kosa = countlyConfig.iKosa,
 	countlyDb = mongo.db((_mongo.user && _mongo.password ? _mongo.user + ':' + _mongo.password + '@' : '')
         + _mongo.host + ':' + _mongo.port + '/' + _mongo.db + '?auto_reconnect'),
     storedEvents = _api.events && _api.events.log ? (_api.events.whitelist || []) : undefined,
     storedDimensions = _api.users && _api.users.dimensions ? (_api.users.dimensionsWhitelist || []) : undefined;
+
+var mimeTypes = {
+    "html": "text/html",
+    "txt": "text/plain",
+    "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
+    "png": "image/png",
+    "js": "text/javascript",
+    "css": "text/css"};
 
 // Global date variables
 var now, timestamp, yearly, monthly, weekly, daily, hourly, appTimezone;
@@ -1016,6 +1030,198 @@ var fetchTimeData = function(getParams, collection, res) {
 	});
 }
 
+var walk = function(dir, done) {
+    var results = [];
+    fs.readdir(dir, function(err, list) {
+        if (err) return done(err);
+        var pending = list.length;
+        if (!pending) return done(null, results);
+        list.forEach(function(file) {
+            file = dir + '/' + file;
+            fs.stat(file, function(err, stat) {
+                if (stat && stat.isDirectory()) {
+                    walk(file, function(err, res) {
+                        results = results.concat(res);
+                        if (!--pending) done(null, results);
+                    });
+                } else {
+                    results.push(file);
+                    if (!--pending) done(null, results);
+                }
+            });
+        });
+    });
+};
+
+var findStep = function(lesson, num) {
+    for (var i = 0; i < lesson.steps.length; i++) {
+        if (lesson.steps[i].num == num) return lesson.steps[i];
+    }
+
+    lesson.steps.push({num: num});
+    return lesson.steps[lesson.steps.length - 1];
+}
+
+var resourcePath = function(lesson, file) {
+    return _kosa.server + '/d?resource=' + encodeURIComponent(lesson + '/' + file);
+}
+
+var iapId = function(num) {
+    return _kosa.iap + num;
+}
+
+var encodeIapNumber = function(num, user) {
+    return encodeIap(iapId(num) + '|' + user);
+}
+
+var encodeIap = function(text) {
+    var cipher = crypto.createCipher('aes-256-cbc', _kosa.secret);
+    var crypted = cipher.update(text,'utf8','hex');
+    crypted += cipher.final('hex')
+    return crypted;
+}
+
+var decodeIapNumber = function(text) {
+    var decoded = decodeIap(text);
+    return decoded && decoded.indexOf(_kosa.iap) === 0 ? decoded.substr(_kosa.iap.length, 2) : '';
+}
+
+var decodeIap = function(text) {
+    var decipher = crypto.createDecipher('aes-256-cbc', _kosa.secret)
+    var dec = decipher.update(text,'hex','utf8')
+    dec += decipher.final('utf8')
+    return dec;
+}
+
+var readPost = function(req, callback) {
+    var fullBody = '';
+    req.on('data', function(chunk) {
+        fullBody += chunk.toString();
+    });
+
+    req.on('end', function() {
+        var urlParts = url.parse(req.url, true).query;
+        var postParams = querystring.parse(fullBody);
+        for (var p in postParams) urlParts[p] = postParams[p];
+        callback(urlParts);
+    });
+}
+
+var encodeLessons = function(lessons, user) {
+    var results = [];
+    lessons.forEach(function(num){
+        results.push(encodeIapNumber(num, user));
+    });
+    return results.join(';');
+}
+
+var decodeLessons = function(req, callback) {
+    var urlParts = url.parse(req.url, true).query;
+    if (req.method == 'GET'){
+        callback(_decodeLessons(urlParts.lessons), urlParts);
+    } else {
+        readPost(req, function(params){
+            callback(_decodeLessons(params.lessons), params);
+        });
+    }
+}
+
+var _decodeLessons = function(text) {
+    var parts = text ? text.split(';') : [];
+    var results = [];
+    parts.forEach(function(text){
+        results.push(decodeIapNumber(text));
+    });
+    return results;
+}
+
+var parseResources = function(getParams, res) {
+    var waiting = 0;
+    var add  = function(i, m) {
+        waiting += i;
+        console.log("adding " + i + " (total " + waiting + ") because / " + m);
+    };
+    var done = function(m) {
+        if (!--waiting) {
+            var responseJson = {
+                lessons: lessons,
+                purchases: encodeLessons(getParams.lessons, getParams.auth)
+            };
+            res.writeHead(200, {'Content-Type': 'application/json'});
+            res.write(JSON.stringify(responseJson));
+            res.end();
+        }
+        console.log("done 1 (total " + waiting + ") because / " + m);
+    };
+    var lessons = [];
+    [_kosa.freeResources, _kosa.paidResources].forEach(function(dir){
+        fs.readdir(dir, function(err, less){
+            if (err) throw err;
+
+            add(less.length, "lessons dir " + dir);
+            less.forEach(function(les){
+                fs.stat(dir + '/' + les, function(err, stat){
+                    if (stat && stat.isDirectory()) {
+                        var lesson = {
+                            id: _kosa.iap + les.split('.')[0],
+                            num: les.split('.')[0],
+                            title: les.split('.')[1],
+                            steps: [],
+                            paid: dir == _kosa.paidResources
+                        };
+                        lessons.push(lesson);
+
+                        add(1, "lesson " + les + " dir");
+                        fs.readdir(dir + '/' + les, function(err, files){
+                            if (err) throw err;
+
+                            add(files.length, "lesson " + les + " files ");
+                            files.forEach(function(file){
+                                var parts = file.split('.'),
+                                    ext = parts[parts.length - 1],
+                                    num = parts[0];
+
+                                // don't allow to get contents for unpaid lesson
+                                if (lesson.paid && getParams.lessons.indexOf(lesson.num) == -1 && num != 'preview') {
+                                    done('not allowed ' + file);
+                                    return;
+                                }
+
+                                if (ext == 'htm') {
+                                    findStep(lesson, num).title = parts[1];
+                                    fs.readFile(dir + '/' + les + '/' + file, 'utf8', function (err, data) {
+                                        if (err) throw err;
+                                        findStep(lesson, num).desc = data;
+                                        done("file " + file + " read");
+                                    });
+                                } else if (ext == 'html') {
+                                    findStep(lesson, num).title = parts[1];
+                                    fs.readFile(dir + '/' + les + '/' + file, 'utf8', function (err, data) {
+                                        if (err) throw err;
+                                        findStep(lesson, num).text = data;
+                                        done("file " + file + " read");
+                                    });
+                                } else if (ext == 'jpg' || ext == 'png') {
+                                    if (num == 'preview') lesson.icon = resourcePath(les, file);
+                                    else if (num == 'result') lesson.titleIcon = resourcePath(les, file);
+                                    else if (num == 'bigresult') lesson.titlePhoto = resourcePath(les, file);
+                                    else if (parts.length > 2) findStep(lesson, num).icon = resourcePath(les, file);
+                                    else findStep(lesson, num).photo = resourcePath(les, file);
+                                    done("image processed");
+                                } else {
+                                    done("invalid file " + file);
+                                }
+                            });
+                            done("lesson directory done");
+                        });
+                    }
+                    done("lesson done: ");
+                });
+            })
+        });
+    });
+}
+
 http.Server(function(req, res) {
 	var urlParts = url.parse(req.url, true);
 	
@@ -1145,7 +1351,107 @@ http.Server(function(req, res) {
 			}
 
 			break;
-		default:
+        case '/p':
+            decodeLessons(req, function(lessons, params){
+                if (!params.receipt) {
+                    res.writeHead(471);
+                    res.end();
+                    return false;
+                }
+
+                if (!params.auth) {
+                    res.writeHead(403);
+                    res.end();
+                    return false;
+                }
+
+                var verifier = new iap();
+                verifier.verifyReceipt(params.receipt, function(valid, msg, data) {
+                    if (valid) {
+                        console.log("Valid receipt: " + msg + " / " + data);
+
+                        if (!data.receipt.bid || (data.receipt.bid.toLowerCase() != _kosa.bundle.toLowerCase() && data.receipt.bid.toLowerCase() != _kosa.teambundle.toLowerCase())) {
+                            console.log("Invalid bundle ID in receipt: " + data.bid);
+                            res.writeHead(471);
+                            res.end();
+                            return false;
+                        }
+
+                        if (!data.receipt.product_id || data.receipt.product_id.toLowerCase().indexOf(_kosa.iap) !== 0) {
+                            console.log("Invalid bundle ID in receipt: " + data.bid);
+                            res.writeHead(471);
+                            res.end();
+                            return false;
+                        }
+
+                        var lessonNumber = data.receipt.product_id.substr(-2);
+                        var exists = false;
+                        lessons.forEach(function(l){
+                            if (l == lessonNumber) exists = true;
+                        })
+                        if (!exists) lessons.push(lessonNumber);
+
+                        parseResources({lessons: lessons, auth: params.auth}, res);
+                    } else {
+                        console.log("Invalid receipt: " + msg + " / " + data);
+                        res.writeHead(400);
+                        res.end();
+                        return false;
+                    }
+                });
+            });
+
+            break;
+        case '/l':
+            decodeLessons(req, function(lessons, params){
+                if (!params.auth) {
+                    res.writeHead(403);
+                    res.end();
+                    return false;
+                }
+
+                parseResources({lessons: lessons, auth: params.auth}, res);
+            });
+            break;
+        case '/d':
+            decodeLessons(req, function(lessons, params){
+                var getParams = {
+                    'auth': params.auth,
+                    'resource': params.resource,
+                    'lessons': lessons
+                };
+
+                if (!getParams.auth || !getParams.resource) {
+                    res.writeHead(400);
+                    res.end();
+                    return false;
+                }
+
+                var filename = path.join(_kosa.freeResources, getParams.resource);
+                fs.exists(filename, function(exists) {
+                    if (exists) {
+                        res.writeHead(200, mimeTypes[path.extname(filename).split(".")[1]]);
+                        fs.createReadStream(filename).pipe(res);
+                    } else {
+                        filename = path.join(_kosa.paidResources, getParams.resource);
+                        fs.exists(filename, function(exists) {
+                            if(exists) {
+                                res.writeHead(200, mimeTypes[path.extname(filename).split(".")[1]]);
+                                fs.createReadStream(filename).pipe(res);
+                            } else {
+                                console.log("not exists: " + filename);
+                                res.writeHead(200, {'Content-Type': 'text/plain'});
+                                res.write('404 Not Found\n');
+                                res.end();
+                                return;
+                            }
+                        });
+                    }
+                }); //end path.exists
+            });
+
+            break;
+        default:
 			res.writeHead(400);
 			res.end();
 			break;
