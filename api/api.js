@@ -1182,7 +1182,12 @@ var parseResources = function(getParams, res) {
                                     num = parts[0];
 
                                 // don't allow to get contents for unpaid lesson
-                                if (lesson.paid && getParams.lessons.indexOf(lesson.num) == -1 && num != 'preview') {
+                                if (lesson.paid &&
+                                        num != 'preview' &&
+                                        getParams.lessons.indexOf(lesson.num) == -1 &&
+                                        getParams.lessons.indexOf('XX') == -1 &&
+                                        getParams.lessons.indexOf('YY') == -1 &&
+                                        getParams.lessons.indexOf('ZZ') == -1) {
                                     done('not allowed ' + file);
                                     return;
                                 }
