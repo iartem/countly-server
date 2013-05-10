@@ -1184,6 +1184,8 @@ var parseResources = function(getParams, res) {
                                 // don't allow to get contents for unpaid lesson
                                 if (lesson.paid &&
                                         num != 'preview' &&
+                                        num != 'result' &&
+                                        num != 'bigresult' &&
                                         getParams.lessons.indexOf(lesson.num) == -1 &&
                                         getParams.lessons.indexOf('XX') == -1 &&
                                         getParams.lessons.indexOf('YY') == -1 &&
